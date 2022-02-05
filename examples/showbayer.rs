@@ -16,6 +16,8 @@ use sdl2::pixels::PixelFormatEnum;
 #[derive(Copy,Clone,Debug,Eq,PartialEq)]
 enum ImgDepth {
     Depth8,
+    Depth10BE,
+    Depth10LE,
     Depth12BE,
     Depth12LE,
     Depth16BE,
@@ -135,7 +137,7 @@ fn main() {
 fn usage() {
     println!("usage: ShowBayer <width> <height> <depth> <filename> [filenames ...]");
     println!();
-    println!("  depth     8, 12BE, 12LE, 16BE, 16LE");
+    println!("  depth     8, 10LE, 10BE, 12LE, 16BE, 16LE");
     println!();
     println!("  <ESC>     Quit.");
     println!("  <left>    Go to previous image.");
@@ -151,7 +153,11 @@ fn parse_depth(s: &String) -> ImgDepth {
     let s = s.to_uppercase();
     if s == "8" {
         ImgDepth::Depth8
-    } else if s == "12BE" {
+    } else if s == "10BE" {
+        ImgDepth::Depth10BE
+    } else if s == "10LE" {
+        ImgDepth::Depth10LE
+    } else if s == "10BE" {
         ImgDepth::Depth12BE
     } else if s == "12LE" {
         ImgDepth::Depth12LE
@@ -167,6 +173,8 @@ fn parse_depth(s: &String) -> ImgDepth {
 fn bayer_depth(depth: ImgDepth) -> BayerDepth {
     match depth {
         ImgDepth::Depth8    => BayerDepth::Depth8,
+        ImgDepth::Depth10BE => BayerDepth::Depth16BE,
+        ImgDepth::Depth10LE => BayerDepth::Depth16LE,
         ImgDepth::Depth12BE => BayerDepth::Depth16BE,
         ImgDepth::Depth12LE => BayerDepth::Depth16LE,
         ImgDepth::Depth16BE => BayerDepth::Depth16BE,
@@ -177,6 +185,8 @@ fn bayer_depth(depth: ImgDepth) -> BayerDepth {
 fn raster_depth(depth: ImgDepth) -> RasterDepth {
     match depth {
         ImgDepth::Depth8    => RasterDepth::Depth8,
+        ImgDepth::Depth10BE => RasterDepth::Depth16,
+        ImgDepth::Depth10LE => RasterDepth::Depth16,
         ImgDepth::Depth12BE => RasterDepth::Depth16,
         ImgDepth::Depth12LE => RasterDepth::Depth16,
         ImgDepth::Depth16BE => RasterDepth::Depth16,
@@ -255,7 +265,13 @@ fn render_to_texture(
         },
 
         RasterDepth::Depth16 => {
-            let shr = if depth == ImgDepth::Depth12BE || depth == ImgDepth::Depth12LE { 4 } else { 8 };
+            let shr = match depth {
+                ImgDepth::Depth10BE => 2,
+                ImgDepth::Depth10LE => 2,
+                ImgDepth::Depth12BE => 4,
+                ImgDepth::Depth12LE => 4,
+                _ => 8,
+            };
             let buf = unsafe {
                 slice::from_raw_parts(buf.as_ptr() as *const u16, buf.len() / 2)
             };
@@ -268,6 +284,7 @@ fn render_to_texture(
                     for i in 0..3 * w {
                         // shr = 8 for u16 to u8, or
                         // shr = 4 for u12 to u8.
+                        // shr = 2 for u10 to u8.
                         let v = buf[src_offset + i] >> shr;
                         buffer[dst_offset + i] = min(v, 255) as u8;
                     }
